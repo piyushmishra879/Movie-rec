@@ -4,7 +4,7 @@ import streamlit as st
 # =============================
 # CONFIG
 # =============================
-API_BASE = "https://movie-rec-utmu.onrender.com" or "http://127.0.0.1:8000"
+API_BASE = "https://movie-rec-utmu.onrender.com"
 TMDB_IMG = "https://image.tmdb.org/t/p/w500"
 
 st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="wide")
@@ -66,7 +66,7 @@ def goto_details(tmdb_id: int):
 @st.cache_data(ttl=30)  # short cache for autocomplete
 def api_get_json(path: str, params: dict | None = None):
     try:
-        r = requests.get(f"{API_BASE}{path}", params=params, timeout=25)
+        r = requests.get(f"{API_BASE}{path}", params=params, timeout=8)
         if r.status_code >= 400:
             return None, f"HTTP {r.status_code}: {r.text[:300]}"
         return r.json(), None
@@ -269,14 +269,17 @@ if st.session_state.view == "home":
     # HOME FEED MODE
     st.markdown(f"### 🏠 Home — {home_category.replace('_',' ').title()}")
 
-    home_cards, err = api_get_json(
-        "/home", params={"category": home_category, "limit": 24}
-    )
-    if err or not home_cards:
-        st.error(f"Home feed failed: {err or 'Unknown error'}")
-        st.stop()
+    if st.button("🔄 Load Home Feed"):
+        home_cards, err = api_get_json(
+            "/home", params={"category": home_category, "limit": 24}
+        )
 
-    poster_grid(home_cards, cols=grid_cols, key_prefix="home_feed")
+        if err or not home_cards:
+            st.error(f"Home feed failed: {err or 'Unknown error'}")
+        else:
+            poster_grid(home_cards, cols=grid_cols, key_prefix="home_feed")
+    else:
+        st.info("Click **Load Home Feed** to fetch movies.")
 
 # ==========================================================
 # VIEW: DETAILS
