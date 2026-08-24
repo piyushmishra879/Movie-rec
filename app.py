@@ -63,13 +63,17 @@ def goto_details(tmdb_id: int):
 # =============================
 # API HELPERS
 # =============================
-@st.cache_data(ttl=30)  # short cache for autocomplete
+@st.cache_data(ttl=60, show_spinner=False)
 def api_get_json(path: str, params: dict | None = None):
     try:
-        r = requests.get(f"{API_BASE}{path}", params=params, timeout=8)
+        r = requests.get(f"{API_BASE}{path}", params=params, timeout=60)
         if r.status_code >= 400:
             return None, f"HTTP {r.status_code}: {r.text[:300]}"
         return r.json(), None
+    except requests.exceptions.Timeout:
+        return None, "Backend server is waking up from sleep. Please wait a moment and try again."
+    except requests.exceptions.ConnectionError:
+        return None, "Unable to reach backend server. Please verify the API is online."
     except Exception as e:
         return None, f"Request failed: {e}"
 
@@ -95,7 +99,7 @@ def poster_grid(cards, cols=6, key_prefix="grid"):
 
             with colset[c]:
                 if poster:
-                    st.image(poster, use_column_width=True)
+                    st.image(poster, use_container_width=True)
                 else:
                     st.write("🖼️ No poster")
 
@@ -240,7 +244,8 @@ if st.session_state.view == "home":
         if len(typed.strip()) < 2:
             st.caption("Type at least 2 characters for suggestions.")
         else:
-            data, err = api_get_json("/tmdb/search", params={"query": typed.strip()})
+            with st.spinner("Searching movies..."):
+                data, err = api_get_json("/tmdb/search", params={"query": typed.strip()})
 
             if err or data is None:
                 st.error(f"Search failed: {err}")
@@ -270,9 +275,10 @@ if st.session_state.view == "home":
     st.markdown(f"### 🏠 Home — {home_category.replace('_',' ').title()}")
 
     if st.button("🔄 Load Home Feed"):
-        home_cards, err = api_get_json(
-            "/home", params={"category": home_category, "limit": 24}
-        )
+        with st.spinner("Fetching movies from server (may take ~30s if server was sleeping)..."):
+            home_cards, err = api_get_json(
+                "/home", params={"category": home_category, "limit": 24}
+            )
 
         if err or not home_cards:
             st.error(f"Home feed failed: {err or 'Unknown error'}")
@@ -301,7 +307,8 @@ elif st.session_state.view == "details":
             goto_home()
 
     # Details (your FastAPI safe route)
-    data, err = api_get_json(f"/movie/id/{tmdb_id}")
+    with st.spinner("Loading movie details..."):
+        data, err = api_get_json(f"/movie/id/{tmdb_id}")
     if err or not data:
         st.error(f"Could not load details: {err or 'Unknown error'}")
         st.stop()
@@ -312,7 +319,7 @@ elif st.session_state.view == "details":
     with left:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         if data.get("poster_url"):
-            st.image(data["poster_url"], use_column_width=True)
+            st.image(data["poster_url"], use_container_width=True)
         else:
             st.write("🖼️ No poster")
         st.markdown("</div>", unsafe_allow_html=True)
@@ -335,7 +342,7 @@ elif st.session_state.view == "details":
 
     if data.get("backdrop_url"):
         st.markdown("#### Backdrop")
-        st.image(data["backdrop_url"], use_column_width=True)
+        st.image(data["backdrop_url"], use_container_width=True)
 
     st.divider()
     st.markdown("### ✅ Recommendations")
@@ -343,10 +350,11 @@ elif st.session_state.view == "details":
     # Recommendations (TF-IDF + Genre) via your bundle endpoint
     title = (data.get("title") or "").strip()
     if title:
-        bundle, err2 = api_get_json(
-            "/movie/search",
-            params={"query": title, "tfidf_top_n": 12, "genre_limit": 12},
-        )
+        with st.spinner("Calculating recommendations..."):
+            bundle, err2 = api_get_json(
+                "/movie/search",
+                params={"query": title, "tfidf_top_n": 12, "genre_limit": 12},
+            )
 
         if not err2 and bundle:
             st.markdown("#### 🔎 Similar Movies (TF-IDF)")
